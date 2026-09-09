@@ -1,35 +1,24 @@
-#!/bin/bash
-set -e
+FROM debian:bookworm
 
-DISK="/data/windows11.qcow2"
+ENV DEBIAN_FRONTEND=noninteractive
 
-if [ ! -f "$DISK" ]; then
-    qemu-img create -f qcow2 "$DISK" 256G
-fi
+RUN apt-get update && apt-get install -y \
+    qemu-system-x86 \
+    qemu-utils \
+    ovmf \
+    swtpm \
+    swtpm-tools \
+    novnc \
+    websockify \
+    wget \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-if [ ! -f /tpm/swtpm.sock ]; then
-    rm -f /tpm/swtpm.sock
+RUN mkdir -p /data /iso /tpm
 
-    swtpm socket \
-        --tpm2 \
-        --tpmstate dir=/tpm \
-        --ctrl type=unixio,path=/tpm/swtpm.sock \
-        --daemon
-fi
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
 
-qemu-system-x86_64 \
-    -enable-kvm \
-    -machine q35 \
-    -cpu host \
-    -m 32768 \
-    -smp 8 \
-    -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
-    -drive if=pflash,format=raw,file=/data/OVMF_VARS.fd \
-    -chardev socket,id=chrtpm,path=/tpm/swtpm.sock \
-    -tpmdev emulator,id=tpm0,chardev=chrtpm \
-    -device tpm-tis,tpmdev=tpm0 \
-    -drive file="$DISK",format=qcow2 \
-    -cdrom /iso/Win11.iso \
-    -netdev user,id=net0,hostfwd=tcp::3389-:3389 \
-    -device virtio-net-pci,netdev=net0 \
-    -vnc :0
+EXPOSE 6080 5900 3389
+
+CMD ["/start.sh"]
